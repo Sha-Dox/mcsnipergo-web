@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCsniperGO - Login</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'SF Mono',Monaco,Consolas,monospace;background:#0a0a0f;color:#e0e0e0;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.login-box{max-width:400px;width:100%;padding:20px}
+h1{color:#4a9eff;font-size:1.4rem;margin-bottom:4px;text-align:center}
+.subtitle{color:#666;font-size:.8rem;margin-bottom:20px;text-align:center}
+.card{background:#12121a;border:1px solid #1e1e2e;border-radius:8px;padding:24px}
+.card h2{font-size:.85rem;color:#888;margin-bottom:16px;text-transform:uppercase;letter-spacing:1px}
+input[type="password"]{background:#0a0a0f;border:1px solid #1e1e2e;color:#e0e0e0;padding:10px 12px;border-radius:6px;font-family:inherit;font-size:.85rem;width:100%;margin-bottom:12px}
+input:focus{outline:none;border-color:#4a9eff}
+button{background:#4a9eff;color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:.85rem;font-weight:600;transition:background .15s;width:100%}
+button:hover{background:#3b82f6}
+.err-msg{color:#ef4444;font-size:.8rem;margin-top:8px;text-align:center}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="login-box">
+<h1>MCsniperGO</h1>
+<p class="subtitle">web control panel</p>
+<div class="card">
+<h2>Login</h2>
+<form onsubmit="doLogin(event)">
+<input type="password" id="login-password" placeholder="password" autofocus required>
+<button type="submit">Login</button>
+</form>
+<div id="login-err" class="err-msg hidden"></div>
+</div>
+</div>
+
+<script>
+function doLogin(e){
+  e.preventDefault();
+  const pw=document.getElementById('login-password').value;
+  if(!pw)return;
+  
+  fetch('/api/login',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({password:pw})
+  })
+  .then(r=>{
+    if(r.ok)return r.json();
+    if(r.status===429)throw new Error('Too many attempts, try again later');
+    throw new Error('Invalid password');
+  })
+  .then(d=>{
+    document.cookie='session='+d.token+';path=/;max-age=31536000;SameSite=Strict';
+    window.location.href='/?token='+d.token;
+  })
+  .catch(err=>{
+    const errEl=document.getElementById('login-err');
+    errEl.textContent=err.message;
+    errEl.classList.remove('hidden');
+  });
+}
+</script>
+</body>
+</html>

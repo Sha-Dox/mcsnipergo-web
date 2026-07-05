@@ -1,0 +1,40 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+mcsnipergo-web
+mcsnipergo-cli
+
+# Test binary
+*.test
+
+# Output
+*.out
+
+# Dependency directories
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Certificates
+certs/
+
+# Account files (sensitive)
+gc.txt
+ms.txt
+gp.txt
+proxies.txt
+
+# Logs
+*.log

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCsniperGO</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'SF Mono',Monaco,Consolas,monospace;background:#0a0a0f;color:#e0e0e0;min-height:100vh}
+.container{max-width:960px;margin:0 auto;padding:20px}
+h1{color:#4a9eff;font-size:1.4rem;margin-bottom:4px}
+.subtitle{color:#666;font-size:.8rem;margin-bottom:20px}
+.card{background:#12121a;border:1px solid #1e1e2e;border-radius:8px;padding:16px;margin-bottom:16px}
+.card h2{font-size:.85rem;color:#888;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+.stat{background:#0a0a0f;border-radius:6px;padding:10px;text-align:center}
+.stat .val{font-size:1.3rem;font-weight:bold;color:#4a9eff}
+.stat .label{font-size:.7rem;color:#666;margin-top:2px}
+.stat.success .val{color:#22c55e}
+.stat.warn .val{color:#f59e0b}
+.stat.err .val{color:#ef4444}
+.form-row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+input[type="text"],input[type="number"],textarea,select{background:#0a0a0f;border:1px solid #1e1e2e;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-family:inherit;font-size:.85rem;flex:1;min-width:100px}
+textarea{min-height:120px;resize:vertical;width:100%}
+input:focus,textarea:focus,select:focus{outline:none;border-color:#4a9eff}
+button{background:#4a9eff;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:.85rem;font-weight:600;transition:background .15s}
+button:hover{background:#3b82f6}
+button.danger{background:#ef4444}
+button.danger:hover{background:#dc2626}
+button.secondary{background:#333}
+button.secondary:hover{background:#444}
+button:disabled{opacity:.5;cursor:not-allowed}
+.log-container{background:#0a0a0f;border:1px solid #1e1e2e;border-radius:6px;height:350px;overflow-y:auto;padding:8px;font-size:.78rem;line-height:1.6}
+.log-line{padding:1px 4px;border-radius:2px}
+.log-line.err{color:#ef4444}
+.log-line.success{color:#22c55e}
+.log-line.info{color:#94a3b8}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
+.status-badge.running{background:#22c55e22;color:#22c55e}
+.status-badge.idle{background:#66666622;color:#666}
+.hidden{display:none}
+.file-tabs{display:flex;gap:4px;margin-bottom:8px}
+.file-tab{padding:4px 10px;border-radius:4px;background:#1a1a24;color:#888;cursor:pointer;font-size:.75rem}
+.file-tab.active{background:#4a9eff22;color:#4a9eff}
+.hint{font-size:.7rem;color:#555;margin-top:4px}
+.parsed-name{color:#22c55e;font-weight:bold}
+label{font-size:.8rem;color:#888;display:block;margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>MCsniperGO</h1>
+<p class="subtitle">web control panel &middot; <a href="#" onclick="logout()" style="color:#ef4444">logout</a></p>
+
+<div class="card">
+<h2>Status <span id="status-badge" class="status-badge idle">IDLE</span></h2>
+<div class="stats-grid">
+<div class="stat"><div class="val" id="s-rps">0</div><div class="label">RPS</div></div>
+<div class="stat success"><div class="val" id="s-success">0</div><div class="label">Success</div></div>
+<div class="stat"><div class="val" id="s-total">0</div><div class="label">Total</div></div>
+<div class="stat warn"><div class="val" id="s-dup">0</div><div class="label">Duplicate</div></div>
+<div class="stat err"><div class="val" id="s-denied">0</div><div class="label">Not Allowed</div></div>
+<div class="stat err"><div class="val" id="s-429">0</div><div class="label">Rate Limited</div></div>
+</div>
+</div>
+
+<div class="card">
+<h2>Snipe</h2>
+<label>Target (username, NameMC link, or 3name link)</label>
+<div class="form-row">
+<input type="text" id="inp-target" placeholder="https://namemc.com/search?q=... or just a username" oninput="parseInput()">
+</div>
+<div id="parsed-result" class="hint"></div>
+<div class="form-row" style="margin-top:8px">
+<div style="flex:1"><label>Drop Start (unix)</label><input type="number" id="inp-start" placeholder="leave empty for now"></div>
+<div style="flex:1"><label>Drop End (unix)</label><input type="number" id="inp-end" placeholder="leave empty for infinite"></div>
+</div>
+<div class="form-row" style="margin-top:8px">
+<button onclick="startSnipe()">Start Snipe</button>
+<button class="danger" onclick="stopSnipe()">Stop</button>
+</div>
+</div>
+
+<div class="card">
+<h2>Settings</h2>
+<div class="form-row">
+<div style="flex:1"><label>Worker Count</label><input type="number" id="inp-workers" placeholder="100" min="1" max="10000"></div>
+</div>
+<div class="form-row" style="margin-top:8px">
+<button onclick="saveConfig()">Save Settings</button>
+<button class="secondary" onclick="reloadFiles()">Reload Files from Disk</button>
+</div>
+</div>
+
+<div class="card">
+<h2>Files</h2>
+<div class="file-tabs">
+<span class="file-tab active" onclick="switchFile('gc.txt',this)">gc.txt</span>
+<span class="file-tab" onclick="switchFile('ms.txt',this)">ms.txt</span>
+<span class="file-tab" onclick="switchFile('gp.txt',this)">gp.txt</span>
+<span class="file-tab" onclick="switchFile('proxies.txt',this)">proxies.txt</span>
+</div>
+<textarea id="file-editor" placeholder="file contents..."></textarea>
+<div class="form-row" style="margin-top:8px">
+<button onclick="saveFile()">Save File</button>
+<button class="secondary" onclick="loadFile()">Load from Disk</button>
+</div>
+<div class="hint">gc.txt = giftcard accounts (no username), ms.txt = microsoft accounts, gp.txt = gamepass accounts, proxies.txt = user:pass@ip:port</div>
+</div>
+
+<div class="card">
+<h2>Live Log</h2>
+<div class="log-container" id="log"></div>
+</div>
+</div>
+
+<script>
+let TOKEN='';
+let currentFile='gc.txt';
+let parsedUsername='';
+const $=id=>document.getElementById(id);
+
+function getToken(){
+  const params=new URLSearchParams(location.search);
+  if(params.get('token'))return params.get('token');
+  const match=document.cookie.match(/session=([^;]+)/);
+  return match?match[1]:'';
+}
+
+function logout(){
+  document.cookie='session=;path=/;max-age=0';
+  window.location.href='/';
+}
+
+TOKEN=getToken();
+if(!TOKEN){window.location.href='/';throw new Error('no token');}
+
+function api(path,opts){
+  return fetch(path,{...opts,headers:{...opts?.headers,'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'}}).then(r=>{
+    if(r.status===401){logout();return null;}
+    return r.json();
+  });
+}
+
+function parseInput(){
+  const val=$('inp-target').value.trim();
+  if(!val){$('parsed-result').textContent='';parsedUsername='';return;}
+  fetch('/api/parse-url',{method:'POST',headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'},body:JSON.stringify({input:val})})
+    .then(r=>r.json())
+    .then(d=>{
+      parsedUsername=d.username;
+      if(val!==d.username){
+        $('parsed-result').innerHTML='parsed: <span class="parsed-name">'+d.username+'</span>';
+      }else{
+        $('parsed-result').textContent='';
+      }
+    });
+}
+
+function startPolling(){
+  const poll=()=>{
+    api('/api/status').then(d=>{
+      if(!d)return;
+      $('s-rps').textContent=d.rps?.toFixed(1)||'0';
+      $('s-success').textContent=d.success||0;
+      $('s-total').textContent=d.total_requests||0;
+      $('s-dup').textContent=d.duplicate||0;
+      $('s-denied').textContent=d.not_allowed||0;
+      $('s-429').textContent=d.too_many_requests||0;
+      const badge=$('status-badge');
+      if(d.running){badge.textContent='RUNNING';badge.className='status-badge running';}
+      else{badge.textContent='IDLE';badge.className='status-badge idle';}
+    });
+  };
+  poll();
+  setInterval(poll,2000);
+}
+
+function connectSSE(){
+  const es=new EventSource('/api/stream?token='+TOKEN);
+  es.onmessage=e=>{
+    try{const d=JSON.parse(e.data);addLog(d.level,d.message);}catch{}
+  };
+  es.onerror=()=>{setTimeout(connectSSE,3000);};
+}
+
+function addLog(level,msg){
+  const log=$('log');
+  const div=document.createElement('div');
+  div.className='log-line '+level;
+  div.textContent=msg;
+  log.appendChild(div);
+  if(log.children.length>2000)log.removeChild(log.firstChild);
+  log.scrollTop=log.scrollHeight;
+}
+
+function startSnipe(){
+  const target=$('inp-target').value.trim();
+  const username=parsedUsername||target;
+  if(!username)return alert('enter a username or NameMC link');
+  const start=parseInt($('inp-start').value)||0;
+  const end=parseInt($('inp-end').value)||0;
+  const workers=parseInt($('inp-workers').value)||0;
+  api('/api/start',{method:'POST',body:JSON.stringify({username,start_unix:start,end_unix:end,worker_count:workers})}).then(d=>{
+    if(d&&d.status)addLog('info','snipe started for '+username);
+  }).catch(e=>addLog('err',e.message));
+}
+
+function stopSnipe(){
+  api('/api/stop',{method:'POST'}).then(d=>{if(d)addLog('info','snipe stopped');});
+}
+
+function reloadFiles(){
+  api('/api/reload',{method:'POST'}).then(d=>{
+    if(d)addLog('info','reloaded: '+d.accounts+' accounts, '+d.proxies+' proxies');
+  });
+}
+
+function switchFile(name,el){
+  currentFile=name;
+  document.querySelectorAll('.file-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  loadFile();
+}
+
+function loadFile(){
+  api('/api/files?file='+currentFile).then(d=>{
+    if(d)$('file-editor').value=d.content||'';
+  });
+}
+
+function saveFile(){
+  const content=$('file-editor').value;
+  api('/api/files?file='+currentFile,{method:'POST',body:JSON.stringify({content})}).then(d=>{
+    if(d)addLog('info','saved '+currentFile);
+  });
+}
+
+function loadConfig(){
+  api('/api/config').then(d=>{
+    if(d)$('inp-workers').value=d.worker_count||100;
+  });
+}
+
+function saveConfig(){
+  const wc=parseInt($('inp-workers').value)||100;
+  api('/api/config',{method:'POST',body:JSON.stringify({worker_count:wc})}).then(d=>{
+    if(d)addLog('info','settings saved, workers: '+d.worker_count);
+  });
+}
+
+startPolling();
+connectSSE();
+loadConfig();
+loadFile();
+</script>
+</body>
+</html>
