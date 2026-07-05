@@ -4,6 +4,8 @@ set -e
 echo "MCsniperGO Web - One-Line Installer"
 echo "===================================="
 
+exec < /dev/tty
+
 read -p "Enter web password: " -s PASSWORD
 echo
 read -p "Enter domain (leave empty for HTTP only): " DOMAIN
