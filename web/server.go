@@ -28,6 +28,8 @@ import (
 //go:embed static
 var staticFiles embed.FS
 
+const Version = "1.1.0"
+
 type Server struct {
 	passwordHash  []byte
 	sessions      map[string]time.Time
@@ -610,6 +612,79 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("update triggered"))
 }
 
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(map[string]string{"version": Version})
+}
+
+func (s *Server) handleFreeProxies(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	
+	sources := []string{
+		"https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=all&ssl=all&anonymity=all",
+	}
+
+	var newProxies []string
+	for _, src := range sources {
+		resp, err := client.Get(src)
+		if err != nil {
+			continue
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+
+		lines := strings.Split(string(body), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" && strings.Contains(line, ":") {
+				newProxies = append(newProxies, line)
+			}
+		}
+	}
+
+	if len(newProxies) == 0 {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"added": 0,
+			"error": "no proxies found",
+		})
+		return
+	}
+
+	existing, _ := parser.ReadLines("proxies.txt")
+	existingSet := make(map[string]bool)
+	for _, p := range existing {
+		existingSet[strings.TrimSpace(p)] = true
+	}
+
+	f, err := os.OpenFile("proxies.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+
+	added := 0
+	for _, p := range newProxies {
+		if !existingSet[p] {
+			fmt.Fprintln(f, p)
+			existingSet[p] = true
+			added++
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"added": added,
+		"total": len(existingSet),
+	})
+}
+
 func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	ip := strings.Split(r.RemoteAddr, ":")[0]
 	
@@ -767,6 +842,8 @@ func (s *Server) ListenAndServeTLS(addr, domain, certDir string) error {
 	})
 
 	mux.HandleFunc("/api/webhook", s.handleWebhook)
+	mux.HandleFunc("/api/version", s.handleVersion)
+	mux.HandleFunc("/api/free-proxies", s.rateLimitMiddleware(s.authMiddleware(s.handleFreeProxies)))
 	mux.HandleFunc("/api/login", s.rateLimitMiddleware(s.corsMiddleware(s.handleLogin)))
 	mux.HandleFunc("/api/status", s.rateLimitMiddleware(s.corsMiddleware(s.authMiddleware(s.handleStatus))))
 	mux.HandleFunc("/api/start", s.rateLimitMiddleware(s.corsMiddleware(s.authMiddleware(s.handleStart))))

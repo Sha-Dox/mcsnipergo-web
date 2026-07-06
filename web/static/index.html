@@ -10,6 +10,7 @@ body{font-family:'SF Mono',Monaco,Consolas,monospace;background:#0a0a0f;color:#e
 .container{max-width:960px;margin:0 auto;padding:20px}
 h1{color:#4a9eff;font-size:1.4rem;margin-bottom:4px}
 .subtitle{color:#666;font-size:.8rem;margin-bottom:20px}
+.version{color:#555;font-size:.7rem;margin-left:8px}
 .card{background:#12121a;border:1px solid #1e1e2e;border-radius:8px;padding:16px;margin-bottom:16px}
 .card h2{font-size:.85rem;color:#888;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px}
 .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
@@ -29,6 +30,8 @@ button.danger{background:#ef4444}
 button.danger:hover{background:#dc2626}
 button.secondary{background:#333}
 button.secondary:hover{background:#444}
+button.success{background:#22c55e}
+button.success:hover{background:#16a34a}
 button:disabled{opacity:.5;cursor:not-allowed}
 .log-container{background:#0a0a0f;border:1px solid #1e1e2e;border-radius:6px;height:350px;overflow-y:auto;padding:8px;font-size:.78rem;line-height:1.6}
 .log-line{padding:1px 4px;border-radius:2px}
@@ -44,12 +47,16 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .file-tab.active{background:#4a9eff22;color:#4a9eff}
 .hint{font-size:.7rem;color:#555;margin-top:4px}
 .parsed-name{color:#22c55e;font-weight:bold}
+.drop-time{color:#f59e0b;font-weight:bold}
 label{font-size:.8rem;color:#888;display:block;margin-bottom:4px}
+.drop-display{background:#1a1a24;border:1px solid #2e2e3e;border-radius:6px;padding:10px;margin-top:8px}
+.drop-display .time{font-size:1.1rem;color:#f59e0b}
+.drop-display .label{font-size:.7rem;color:#666}
 </style>
 </head>
 <body>
 <div class="container">
-<h1>MCsniperGO</h1>
+<h1>MCsniperGO <span class="version" id="version">v?</span></h1>
 <p class="subtitle">web control panel &middot; <a href="#" onclick="logout()" style="color:#ef4444">logout</a></p>
 
 <div class="card">
@@ -71,9 +78,14 @@ label{font-size:.8rem;color:#888;display:block;margin-bottom:4px}
 <input type="text" id="inp-target" placeholder="https://namemc.com/search?q=... or just a username" oninput="parseInput()">
 </div>
 <div id="parsed-result" class="hint"></div>
+<div id="drop-display" class="drop-display hidden">
+<div><span class="label">Drop Time:</span> <span class="time" id="drop-time"></span></div>
+<div><span class="label">Start:</span> <span id="drop-start"></span></div>
+<div><span class="label">End:</span> <span id="drop-end"></span></div>
+</div>
 <div class="form-row" style="margin-top:8px">
-<div style="flex:1"><label>Drop Start (unix)</label><input type="number" id="inp-start" placeholder="leave empty for now"></div>
-<div style="flex:1"><label>Drop End (unix)</label><input type="number" id="inp-end" placeholder="leave empty for infinite"></div>
+<div style="flex:1"><label>Drop Start (unix)</label><input type="number" id="inp-start" placeholder="auto-filled from link"></div>
+<div style="flex:1"><label>Drop End (unix)</label><input type="number" id="inp-end" placeholder="auto-filled from link"></div>
 </div>
 <div class="form-row" style="margin-top:8px">
 <button onclick="startSnipe()">Start Snipe</button>
@@ -104,6 +116,7 @@ label{font-size:.8rem;color:#888;display:block;margin-bottom:4px}
 <div class="form-row" style="margin-top:8px">
 <button onclick="saveFile()">Save File</button>
 <button class="secondary" onclick="loadFile()">Load from Disk</button>
+<button class="success" onclick="addFreeProxies()">Add Free Proxies</button>
 </div>
 <div class="hint">gc.txt = giftcard accounts (no username), ms.txt = microsoft accounts, gp.txt = gamepass accounts, proxies.txt = user:pass@ip:port</div>
 </div>
@@ -142,9 +155,15 @@ function api(path,opts){
   });
 }
 
+function loadVersion(){
+  api('/api/version').then(d=>{
+    if(d)$('version').textContent='v'+d.version;
+  });
+}
+
 function parseInput(){
   const val=$('inp-target').value.trim();
-  if(!val){$('parsed-result').textContent='';parsedUsername='';return;}
+  if(!val){$('parsed-result').textContent='';$('drop-display').classList.add('hidden');parsedUsername='';return;}
   fetch('/api/parse-url',{method:'POST',headers:{'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'},body:JSON.stringify({input:val})})
     .then(r=>r.json())
     .then(d=>{
@@ -157,7 +176,14 @@ function parseInput(){
       if(d.droptime){
         $('inp-start').value=d.droptime.start;
         $('inp-end').value=d.droptime.end;
-        $('parsed-result').innerHTML+=' &middot; drop: <span class="parsed-name">'+new Date(d.droptime.start*1000).toLocaleString()+'</span>';
+        const start=new Date(d.droptime.start*1000);
+        const end=new Date(d.droptime.end*1000);
+        $('drop-time').textContent=start.toLocaleString();
+        $('drop-start').textContent=start.toLocaleString()+' ('+d.droptime.start+')';
+        $('drop-end').textContent=end.toLocaleString()+' ('+d.droptime.end+')';
+        $('drop-display').classList.remove('hidden');
+      }else{
+        $('drop-display').classList.add('hidden');
       }
     });
 }
@@ -254,6 +280,16 @@ function saveConfig(){
   });
 }
 
+function addFreeProxies(){
+  api('/api/free-proxies',{method:'POST'}).then(d=>{
+    if(d){
+      addLog('info','added '+d.added+' free proxies (total: '+d.total+')');
+      if(currentFile==='proxies.txt')loadFile();
+    }
+  });
+}
+
+loadVersion();
 startPolling();
 connectSSE();
 loadConfig();
