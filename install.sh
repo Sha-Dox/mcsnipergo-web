@@ -51,6 +51,34 @@ sudo systemctl daemon-reload
 sudo systemctl enable mcsnipergo
 sudo systemctl start mcsnipergo
 
+echo "Setting up auto-updates..."
+sudo tee /etc/systemd/system/mcsnipergo-update.service > /dev/null <<EOF
+[Unit]
+Description=MCsniperGO Auto Update
+
+[Service]
+Type=oneshot
+User=$USER
+ExecStart=$HOME/mcsnipergo-web/update.sh
+WorkingDirectory=$HOME/mcsnipergo-web
+EOF
+
+sudo tee /etc/systemd/system/mcsnipergo-update.timer > /dev/null <<EOF
+[Unit]
+Description=Check for MCsniperGO updates every hour
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+sudo systemctl enable mcsnipergo-update.timer
+sudo systemctl start mcsnipergo-update.timer
+
 echo
 echo "Installation complete!"
 echo "======================"
