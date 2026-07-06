@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -587,6 +588,28 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	event := r.Header.Get("X-GitHub-Event")
+	if event != "push" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	go func() {
+		time.Sleep(10 * time.Second)
+		cmd := exec.Command("bash", "-c", "cd ~/mcsnipergo-web && git pull && go build -o mcsnipergo-web ./cmd/web/ && sudo systemctl restart mcsnipergo")
+		cmd.Run()
+	}()
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("update triggered"))
+}
+
 func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	ip := strings.Split(r.RemoteAddr, ":")[0]
 	
@@ -743,6 +766,7 @@ func (s *Server) ListenAndServeTLS(addr, domain, certDir string) error {
 		fileServer.ServeHTTP(w, r)
 	})
 
+	mux.HandleFunc("/api/webhook", s.handleWebhook)
 	mux.HandleFunc("/api/login", s.rateLimitMiddleware(s.corsMiddleware(s.handleLogin)))
 	mux.HandleFunc("/api/status", s.rateLimitMiddleware(s.corsMiddleware(s.authMiddleware(s.handleStatus))))
 	mux.HandleFunc("/api/start", s.rateLimitMiddleware(s.corsMiddleware(s.authMiddleware(s.handleStart))))

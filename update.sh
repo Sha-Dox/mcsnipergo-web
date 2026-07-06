@@ -3,18 +3,15 @@ set -e
 
 cd ~/mcsnipergo-web
 
-# Check for updates
-git fetch
-LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse @{u})
+# Quick remote check (no download)
+REMOTE_SHA=$(git ls-remote origin HEAD | awk '{print $1}')
+LOCAL_SHA=$(git rev-parse HEAD)
 
-if [ "$LOCAL" = "$REMOTE" ]; then
+if [ "$REMOTE_SHA" = "$LOCAL_SHA" ]; then
     exit 0
 fi
 
-# Pull and rebuild
+# Update
 git pull
 go build -o mcsnipergo-web ./cmd/web/
-
-# Restart service
 sudo systemctl restart mcsnipergo
