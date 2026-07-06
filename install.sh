@@ -52,6 +52,8 @@ sudo systemctl enable mcsnipergo
 sudo systemctl start mcsnipergo
 
 echo "Setting up auto-updates..."
+sudo cp $HOME/mcsnipergo-web/mcupdate.sh /usr/local/bin/mcupdate
+sudo chmod +x /usr/local/bin/mcupdate
 sudo tee /etc/systemd/system/mcsnipergo-update.service > /dev/null <<EOF
 [Unit]
 Description=MCsniperGO Auto Update
