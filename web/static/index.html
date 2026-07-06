@@ -154,6 +154,11 @@ function parseInput(){
       }else{
         $('parsed-result').textContent='';
       }
+      if(d.droptime){
+        $('inp-start').value=d.droptime.start;
+        $('inp-end').value=d.droptime.end;
+        $('parsed-result').innerHTML+=' &middot; drop: <span class="parsed-name">'+new Date(d.droptime.start*1000).toLocaleString()+'</span>';
+      }
     });
 }
 

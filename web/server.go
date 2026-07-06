@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -303,7 +304,79 @@ func (s *Server) handleParseURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	username := parseNameMCInput(body.Input)
-	json.NewEncoder(w).Encode(map[string]string{"username": username})
+	
+	var droptime *DropTimeResult
+	if strings.Contains(body.Input, "namemc.com") || strings.Contains(body.Input, "3name.xyz") {
+		droptime = fetchDropTime(body.Input)
+	}
+	
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"username": username,
+		"droptime": droptime,
+	})
+}
+
+type DropTimeResult struct {
+	Start int64 `json:"start"`
+	End   int64 `json:"end"`
+}
+
+func fetchDropTime(url string) *DropTimeResult {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil
+	}
+	
+	bodyStr := string(body)
+	
+	if strings.Contains(url, "namemc.com") {
+		start := extractAttr(bodyStr, `id="availability-time"`, `datetime="`)
+		end := extractAttr(bodyStr, `id="availability-time2"`, `datetime="`)
+		if start != "" && end != "" {
+			t1, err1 := time.Parse(time.RFC3339, start)
+			t2, err2 := time.Parse(time.RFC3339, end)
+			if err1 == nil && err2 == nil {
+				return &DropTimeResult{Start: t1.Unix(), End: t2.Unix()}
+			}
+		}
+	}
+	
+	if strings.Contains(url, "3name.xyz") {
+		start := extractAttr(bodyStr, `id="lower-bound-update"`, `data-lower-bound="`)
+		end := extractAttr(bodyStr, `id="upper-bound-update"`, `data-upper-bound="`)
+		if start != "" && end != "" {
+			s, _ := strconv.ParseInt(start, 10, 64)
+			e, _ := strconv.ParseInt(end, 10, 64)
+			if s > 0 && e > 0 {
+				return &DropTimeResult{Start: s / 1000, End: e / 1000}
+			}
+		}
+	}
+	
+	return nil
+}
+
+func extractAttr(html, idAttr, dataAttr string) string {
+	idx := strings.Index(html, idAttr)
+	if idx == -1 {
+		return ""
+	}
+	idx = strings.Index(html[idx:], dataAttr)
+	if idx == -1 {
+		return ""
+	}
+	start := idx + len(dataAttr)
+	end := strings.Index(html[start:], `"`)
+	if end == -1 {
+		return ""
+	}
+	return html[start : start+end]
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
