@@ -88,6 +88,48 @@ func preWarmDNS(hosts []string) {
 	}
 }
 
+func testProxy(proxy string) bool {
+	client := &fasthttp.Client{
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+	}
+	if strings.HasPrefix(proxy, "socks5://") {
+		client.Dial = fasthttpproxy.FasthttpSocksDialer(proxy)
+	} else if proxy != "" {
+		client.Dial = fasthttpproxy.FasthttpHTTPDialer(proxy)
+	}
+
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURI("https://api.minecraftservices.com/entitlements/mcitems")
+	err := client.Do(req, resp)
+	return err == nil && resp.StatusCode() < 500
+}
+
+func filterWorkingProxies(proxies []string) []string {
+	if len(proxies) == 0 {
+		return []string{""}
+	}
+
+	working := []string{}
+	for _, p := range proxies {
+		if testProxy(p) {
+			working = append(working, p)
+		}
+	}
+
+	if len(working) == 0 {
+		log.Log("warn", "no working proxies found, using direct connection")
+		return []string{""}
+	}
+
+	log.Log("success", "%d/%d proxies working", len(working), len(proxies))
+	return working
+}
+
 func newWorkerClient(proxy string) *fasthttp.Client {
 	client := &fasthttp.Client{
 		Dial: (&fasthttp.TCPDialer{
@@ -96,8 +138,8 @@ func newWorkerClient(proxy string) *fasthttp.Client {
 		}).Dial,
 		NoDefaultUserAgentHeader: true,
 		MaxConnsPerHost:          512,
-		ReadTimeout:              5 * time.Second,
-		WriteTimeout:             5 * time.Second,
+		ReadTimeout:              15 * time.Second,
+		WriteTimeout:             15 * time.Second,
 	}
 	if strings.HasPrefix(proxy, "socks5://") {
 		client.Dial = fasthttpproxy.FasthttpSocksDialer(proxy)
@@ -299,12 +341,10 @@ func (s *Claim) runClaim() {
 
 	preWarmDNS([]string{"api.minecraftservices.com", "api.mojang.com"})
 
-	if len(s.Proxies) == 0 {
-		s.Proxies = []string{""}
-	}
+	workingProxies := filterWorkingProxies(s.Proxies)
 
 	proxySet := make(map[string]bool)
-	for _, p := range s.Proxies {
+	for _, p := range workingProxies {
 		proxySet[p] = true
 	}
 	uniqueProxies := make([]string, 0, len(proxySet))
@@ -322,15 +362,15 @@ func (s *Claim) runClaim() {
 		}
 	}
 
-	msg := log.Sprintf("using %v accounts, %v proxies, %v workers", len(s.Accounts), len(s.Proxies), workersPerProxy*len(uniqueProxies))
+	msg := log.Sprintf("using %v accounts, %v/%v proxies working, %v workers", len(s.Accounts), len(uniqueProxies), len(s.Proxies), workersPerProxy*len(uniqueProxies))
 	log.Log("info", "using %v accounts", len(s.Accounts))
-	log.Log("info", "using %v proxies", len(s.Proxies))
+	log.Log("info", "using %v/%v working proxies", len(uniqueProxies), len(s.Proxies))
 	emitEvent("info", msg)
 
 	time.Sleep(time.Until(s.DropRange.Start))
 
-	go requestGenerator(workChan, killChan, gcs, s.Username, mc.MsPr, s.DropRange.End, s.Proxies, -1)
-	go requestGenerator(workChan, killChan, mss, s.Username, mc.Ms, s.DropRange.End, s.Proxies, -1)
+	go requestGenerator(workChan, killChan, gcs, s.Username, mc.MsPr, s.DropRange.End, workingProxies, -1)
+	go requestGenerator(workChan, killChan, mss, s.Username, mc.Ms, s.DropRange.End, workingProxies, -1)
 
 	if s.DropRange.End.IsZero() {
 		select {}
