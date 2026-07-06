@@ -2,7 +2,7 @@
 set -e
 
 echo "Updating MCsniperGO..."
-cd ~/mcsnipergo-web
+cd /home/ec2-user/mcsnipergo-web
 
 git fetch origin
 LOCAL=$(git rev-parse HEAD)
